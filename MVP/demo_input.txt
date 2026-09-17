@@ -1,0 +1,5 @@
+int x = 10
+explain
+suggest fixes
+apply 1
+quit

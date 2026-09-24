@@ -3,7 +3,8 @@ from dataclasses import dataclass
 @dataclass
 class Repair:
     """Represents a single repair action derived from a diagnostic.
-    For the MVP we only need INSERT operations for a missing semicolon.
+    Only deterministic syntax repairs (e.g. missing semicolon) are supported.
+    Semantic diagnostics do not produce automated repairs.
     """
     description: str
     operation: str  # e.g., "INSERT"

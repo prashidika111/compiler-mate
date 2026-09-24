@@ -3,14 +3,22 @@ from typing import Optional
 
 @dataclass
 class Diagnostic:
-    """Structured diagnostic produced by the parser.
-    Fields correspond to the specification for Review 1.
+    """Structured diagnostic produced by the compiler (syntax or semantic).
+    Fields:
+    - phase: "syntax" | "semantic"
+    - type: diagnostic error code (e.g., "MISSING_TOKEN", "REDECLARATION", "UNDECLARED_IDENTIFIER", "TYPE_MISMATCH_DECL", "TYPE_MISMATCH_ASSIGN")
+    - line: 1-based source line
+    - column: 1-based source column
+    - expected: description of what was expected
+    - actual: description of what was actually encountered
+    - message: human-readable error description
+    - symbol: optional identifier name involved in the diagnostic
     """
-    phase: str            # e.g., "syntax"
-    type: str             # e.g., "MISSING_TOKEN"
+    phase: str
+    type: str
     line: int
     column: int
     expected: str
     actual: str
     message: str
-    # possible actions can be derived from type; not required here
+    symbol: Optional[str] = None

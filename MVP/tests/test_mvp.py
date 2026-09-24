@@ -1,5 +1,6 @@
 import unittest
 from compilermate.session import Session
+from compilermate.ast import ProgramAST, DeclarationAST
 
 class TestMVPIntegration(unittest.TestCase):
     def test_full_flow_missing_semicolon(self):
@@ -12,6 +13,7 @@ class TestMVPIntegration(unittest.TestCase):
         # Diagnostic should be retained and have correct fields
         diag = session.diagnostic
         self.assertIsNotNone(diag)
+        self.assertEqual(diag.phase, "syntax")
         self.assertEqual(diag.type, "MISSING_TOKEN")
         self.assertEqual(diag.expected, ";")
         self.assertEqual(diag.actual, "EOF")
@@ -32,10 +34,16 @@ class TestMVPIntegration(unittest.TestCase):
         self.assertTrue(session.diagnostic is None, "No diagnostic after successful recompilation")
         self.assertIsNotNone(session.ast)
         # Verify AST values
-        ast = session.ast
-        self.assertEqual(ast.var_type, "int")
-        self.assertEqual(ast.name, "x")
-        self.assertEqual(ast.value, 10)
+        self.assertIsInstance(session.ast, ProgramAST)
+        self.assertEqual(len(session.ast.statements), 1)
+        decl = session.ast.statements[0]
+        self.assertIsInstance(decl, DeclarationAST)
+        self.assertEqual(decl.var_type, "int")
+        self.assertEqual(decl.name, "x")
+        self.assertEqual(decl.value, 10)
+        # Symbol table populated
+        self.assertEqual(len(session.symbol_table), 1)
+        self.assertEqual(session.symbol_table.lookup("x").type, "int")
 
 if __name__ == '__main__':
     unittest.main()

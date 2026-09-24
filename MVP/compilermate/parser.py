@@ -1,11 +1,16 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 from .tokens import Token, TokenType
 from .diagnostics import Diagnostic
-from .ast import DeclarationAST
+from .ast import ProgramAST, DeclarationAST, AssignmentAST
 
 class Parser:
-    """Very small recursive‑descent parser for a single declaration.
-    On success returns a DeclarationAST. On failure returns a Diagnostic.
+    """Recursive-descent parser for the Phase 2 grammar:
+    program      → statement+ EOF
+    statement    → declaration | assignment
+    declaration  → ("int" | "bool") IDENTIFIER "=" literal ";"
+    assignment   → IDENTIFIER "=" rvalue ";"
+    rvalue       → literal | IDENTIFIER
+    literal      → INT_LITERAL | "true" | "false"
     """
 
     def __init__(self, tokens: List[Token]):
@@ -13,41 +18,190 @@ class Parser:
         self.current = 0
         self.diagnostic: Optional[Diagnostic] = None
 
-    def parse(self) -> Optional[DeclarationAST]:
-        # declaration -> type IDENTIFIER "=" INT_LITERAL ";"
-        # We will attempt to consume in order, and if the final semicolon is missing, report it.
-        type_tok = self._consume(TokenType.INT, "type 'int'")
-        if type_tok is None:
-            return None
-        ident_tok = self._consume(TokenType.IDENTIFIER, "identifier")
-        if ident_tok is None:
-            return None
-        assign_tok = self._consume(TokenType.ASSIGN, "'='")
-        if assign_tok is None:
-            return None
-        lit_tok = self._consume(TokenType.INT_LITERAL, "integer literal")
-        if lit_tok is None:
-            return None
-        # Expect semicolon
-        if self._match(TokenType.SEMICOLON):
-            # Successful parse, construct AST
-            return DeclarationAST(var_type=type_tok.lexeme,
-                                   name=ident_tok.lexeme,
-                                   value=int(lit_tok.lexeme))
-        else:
-            # Missing semicolon – create diagnostic using the location where it was expected
-            # The next token is either EOF or something else; we use the current token for location
-            next_tok = self._peek()
-            line = next_tok.line
-            column = next_tok.column
+    def parse(self) -> Optional[ProgramAST]:
+        statements = []
+
+        if self._is_at_end():
+            tok = self._peek()
             self.diagnostic = Diagnostic(
                 phase="syntax",
                 type="MISSING_TOKEN",
-                line=line,
-                column=column,
+                line=tok.line,
+                column=tok.column,
+                expected="statement",
+                actual="EOF",
+                message="Expected at least one statement"
+            )
+            return None
+
+        while not self._is_at_end():
+            stmt = self._parse_statement()
+            if stmt is None:
+                return None
+            statements.append(stmt)
+
+        # Validate EOF / trailing tokens
+        if not self._is_at_end():
+            tok = self._peek()
+            self.diagnostic = Diagnostic(
+                phase="syntax",
+                type="UNEXPECTED_TOKEN",
+                line=tok.line,
+                column=tok.column,
+                expected="EOF",
+                actual=tok.lexeme if tok.type != TokenType.EOF else "EOF",
+                message=f"Unexpected token '{tok.lexeme}' after program"
+            )
+            return None
+
+        return ProgramAST(statements=statements)
+
+    def _parse_statement(self) -> Optional[Union[DeclarationAST, AssignmentAST]]:
+        if self._check(TokenType.INT) or self._check(TokenType.BOOL):
+            return self._parse_declaration()
+        elif self._check(TokenType.IDENTIFIER):
+            return self._parse_assignment()
+        else:
+            tok = self._peek()
+            self.diagnostic = Diagnostic(
+                phase="syntax",
+                type="MISSING_TOKEN",
+                line=tok.line,
+                column=tok.column,
+                expected="statement",
+                actual=tok.lexeme if tok.type != TokenType.EOF else "EOF",
+                message=f"Expected declaration or assignment, got '{tok.lexeme if tok.type != TokenType.EOF else 'EOF'}'"
+            )
+            return None
+
+    def _parse_declaration(self) -> Optional[DeclarationAST]:
+        type_tok = self._advance()
+        ident_tok = self._consume(TokenType.IDENTIFIER, "identifier")
+        if ident_tok is None:
+            return None
+
+        assign_tok = self._consume(TokenType.ASSIGN, "'='")
+        if assign_tok is None:
+            return None
+
+        # Parse literal
+        if self._check(TokenType.INT_LITERAL):
+            lit_tok = self._advance()
+            val = int(lit_tok.lexeme)
+            val_type = "int"
+        elif self._check(TokenType.TRUE):
+            lit_tok = self._advance()
+            val = True
+            val_type = "bool"
+        elif self._check(TokenType.FALSE):
+            lit_tok = self._advance()
+            val = False
+            val_type = "bool"
+        else:
+            tok = self._peek()
+            self.diagnostic = Diagnostic(
+                phase="syntax",
+                type="MISSING_TOKEN",
+                line=tok.line,
+                column=tok.column,
+                expected="literal",
+                actual=tok.lexeme if tok.type != TokenType.EOF else "EOF",
+                message="Expected literal ('int' literal, 'true', or 'false')"
+            )
+            return None
+
+        # Expect semicolon
+        if self._match(TokenType.SEMICOLON):
+            return DeclarationAST(
+                var_type=type_tok.lexeme,
+                name=ident_tok.lexeme,
+                value=val,
+                value_type=val_type,
+                line=type_tok.line,
+                column=type_tok.column
+            )
+        else:
+            next_tok = self._peek()
+            self.diagnostic = Diagnostic(
+                phase="syntax",
+                type="MISSING_TOKEN",
+                line=next_tok.line,
+                column=next_tok.column,
                 expected=";",
                 actual=next_tok.lexeme if next_tok.type != TokenType.EOF else "EOF",
-                message=f"Expected ';' after expression"
+                message="Expected ';' after expression"
+            )
+            return None
+
+    def _parse_assignment(self) -> Optional[AssignmentAST]:
+        ident_tok = self._advance()
+        assign_tok = self._consume(TokenType.ASSIGN, "'='")
+        if assign_tok is None:
+            return None
+
+        # Parse rvalue -> literal | IDENTIFIER
+        if self._check(TokenType.INT_LITERAL):
+            lit_tok = self._advance()
+            val = int(lit_tok.lexeme)
+            val_type = "int"
+            is_ident = False
+            rv_line = lit_tok.line
+            rv_col = lit_tok.column
+        elif self._check(TokenType.TRUE):
+            lit_tok = self._advance()
+            val = True
+            val_type = "bool"
+            is_ident = False
+            rv_line = lit_tok.line
+            rv_col = lit_tok.column
+        elif self._check(TokenType.FALSE):
+            lit_tok = self._advance()
+            val = False
+            val_type = "bool"
+            is_ident = False
+            rv_line = lit_tok.line
+            rv_col = lit_tok.column
+        elif self._check(TokenType.IDENTIFIER):
+            var_tok = self._advance()
+            val = var_tok.lexeme
+            val_type = "identifier"
+            is_ident = True
+            rv_line = var_tok.line
+            rv_col = var_tok.column
+        else:
+            tok = self._peek()
+            self.diagnostic = Diagnostic(
+                phase="syntax",
+                type="MISSING_TOKEN",
+                line=tok.line,
+                column=tok.column,
+                expected="rvalue",
+                actual=tok.lexeme if tok.type != TokenType.EOF else "EOF",
+                message="Expected literal or identifier"
+            )
+            return None
+
+        if self._match(TokenType.SEMICOLON):
+            return AssignmentAST(
+                name=ident_tok.lexeme,
+                value=val,
+                value_type=val_type,
+                is_identifier=is_ident,
+                rvalue_line=rv_line,
+                rvalue_column=rv_col,
+                line=ident_tok.line,
+                column=ident_tok.column
+            )
+        else:
+            next_tok = self._peek()
+            self.diagnostic = Diagnostic(
+                phase="syntax",
+                type="MISSING_TOKEN",
+                line=next_tok.line,
+                column=next_tok.column,
+                expected=";",
+                actual=next_tok.lexeme if next_tok.type != TokenType.EOF else "EOF",
+                message="Expected ';' after expression"
             )
             return None
 
@@ -75,7 +229,6 @@ class Parser:
     def _consume(self, token_type: TokenType, description: str) -> Optional[Token]:
         if self._check(token_type):
             return self._advance()
-        # Missing expected token – create diagnostic (simplified for non‑semicolon cases)
         tok = self._peek()
         self.diagnostic = Diagnostic(
             phase="syntax",

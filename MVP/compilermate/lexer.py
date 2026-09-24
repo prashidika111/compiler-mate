@@ -1,62 +1,85 @@
+from typing import List
 from .tokens import Token, TokenType
+
 class Lexer:
-    """Simple hand‑written lexer for the minimal language.
-    Recognises the tokens needed for a single declaration.
+    """Hand-written lexer for the Phase 2 minimal language.
+    Supports: int, bool, true, false, identifiers, integer literals, '=', ';', and EOF.
+    Tracks 1-based line and column positions accurately across multiline sources.
     """
-    KEYWORDS = {"int": TokenType.INT}
+    KEYWORDS = {
+        "int": TokenType.INT,
+        "bool": TokenType.BOOL,
+        "true": TokenType.TRUE,
+        "false": TokenType.FALSE,
+    }
+
     def __init__(self, source: str):
         self.source = source
         self.current = 0
         self.line = 1
         self.column = 1
-        self.tokens = []
-    def lex(self):
+        self.tokens: List[Token] = []
+
+    def lex(self) -> List[Token]:
         while not self._is_at_end():
             self._skip_whitespace()
             if self._is_at_end():
                 break
+            start_line = self.line
             start_col = self.column
             ch = self._peek()
-            if ch.isalpha():
+
+            if ch.isalpha() or ch == '_':
                 lexeme = self._identifier()
                 token_type = self.KEYWORDS.get(lexeme, TokenType.IDENTIFIER)
-                self._add_token(token_type, lexeme, self.line, start_col)
+                self._add_token(token_type, lexeme, start_line, start_col)
             elif ch.isdigit():
                 lexeme = self._number()
-                self._add_token(TokenType.INT_LITERAL, lexeme, self.line, start_col)
+                self._add_token(TokenType.INT_LITERAL, lexeme, start_line, start_col)
             elif ch == '=':
                 self._advance()
-                self._add_token(TokenType.ASSIGN, '=', self.line, start_col)
+                self._add_token(TokenType.ASSIGN, '=', start_line, start_col)
             elif ch == ';':
                 self._advance()
-                self._add_token(TokenType.SEMICOLON, ';', self.line, start_col)
+                self._add_token(TokenType.SEMICOLON, ';', start_line, start_col)
             else:
-                # Unknown character – skip it (the parser will later error)
+                # Unknown character – skip it (the parser will later error on unexpected tokens)
                 self._advance()
-        # EOF token
+
+        # EOF token at final position
         self._add_token(TokenType.EOF, '', self.line, self.column)
         return self.tokens
-    # ----- helpers -----
-    def _is_at_end(self):
+
+    def _is_at_end(self) -> bool:
         return self.current >= len(self.source)
-    def _peek(self):
+
+    def _peek(self) -> str:
         return self.source[self.current]
-    def _advance(self):
+
+    def _advance(self) -> str:
         ch = self.source[self.current]
         self.current += 1
-        self.column += 1
+        if ch == '\n':
+            self.line += 1
+            self.column = 1
+        else:
+            self.column += 1
         return ch
-    def _add_token(self, type_, lexeme, line, column):
+
+    def _add_token(self, type_: TokenType, lexeme: str, line: int, column: int) -> None:
         self.tokens.append(Token(type_, lexeme, line, column))
-    def _skip_whitespace(self):
+
+    def _skip_whitespace(self) -> None:
         while not self._is_at_end() and self._peek().isspace():
             self._advance()
-    def _identifier(self):
+
+    def _identifier(self) -> str:
         start = self.current
         while not self._is_at_end() and (self._peek().isalnum() or self._peek() == '_'):
             self._advance()
         return self.source[start:self.current]
-    def _number(self):
+
+    def _number(self) -> str:
         start = self.current
         while not self._is_at_end() and self._peek().isdigit():
             self._advance()

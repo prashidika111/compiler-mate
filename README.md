@@ -160,7 +160,7 @@ CompilerMate/
 
 The `MVP/` name is literal, not incidental. This is a first milestone, and I expect the layout to grow past it rather than get restructured around it. `Reports for submission/` holds documentation written for one stage of this project's development. It was first built out as coursework, but that is a record of the project's context, not what defines the project.
 
-## Limitations, honestly
+## Limitations
 
 * One language construct (`int x = value;`), one diagnostic kind (missing `;`), and one repair.
 * No semantic analysis. Nothing here knows what a variable means, only whether the syntax is well-formed.

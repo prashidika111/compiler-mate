@@ -56,5 +56,31 @@ class TestLexer(unittest.TestCase):
         self.assertEqual(tokens[10].line, 3)
         self.assertEqual(tokens[10].column, 1)
 
+    def test_unknown_character_single_line(self):
+        source = "int x @ 5;"
+        lexer = Lexer(source)
+        tokens = lexer.lex()
+        self.assertIsNotNone(lexer.diagnostic)
+        self.assertEqual(lexer.diagnostic.phase, "lexical")
+        self.assertEqual(lexer.diagnostic.type, "INVALID_CHARACTER")
+        self.assertEqual(lexer.diagnostic.line, 1)
+        self.assertEqual(lexer.diagnostic.column, 7)
+        self.assertEqual(lexer.diagnostic.actual, "@")
+        # Ensure only valid preceding tokens were collected
+        self.assertEqual(len(tokens), 2)
+        self.assertEqual(tokens[0].lexeme, "int")
+        self.assertEqual(tokens[1].lexeme, "x")
+
+    def test_unknown_character_multiline(self):
+        source = "int x = 5;\nbool flag # true;"
+        lexer = Lexer(source)
+        tokens = lexer.lex()
+        self.assertIsNotNone(lexer.diagnostic)
+        self.assertEqual(lexer.diagnostic.phase, "lexical")
+        self.assertEqual(lexer.diagnostic.type, "INVALID_CHARACTER")
+        self.assertEqual(lexer.diagnostic.line, 2)
+        self.assertEqual(lexer.diagnostic.column, 11)
+        self.assertEqual(lexer.diagnostic.actual, "#")
+
 if __name__ == '__main__':
     unittest.main()

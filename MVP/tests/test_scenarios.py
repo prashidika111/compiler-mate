@@ -145,5 +145,32 @@ class TestScenarios(unittest.TestCase):
         self.assertIsNotNone(sym_y)
         self.assertEqual(sym_y.type, "int")
 
+    def test_scenario_6_lexical_error(self):
+        """SCENARIO 6 — LEXICAL ERROR
+        Source:
+        int x @ 5;
+        Expected:
+        - lexical diagnostic
+        - line 1, column 7, actual '@'
+        - compilation fails
+        - AST is None
+        - symbol table is empty
+        - no repair candidates
+        """
+        source = "int x @ 5;"
+        session = Session(source=source)
+        success = session.compile()
+
+        self.assertFalse(success)
+        self.assertIsNotNone(session.diagnostic)
+        self.assertEqual(session.diagnostic.phase, "lexical")
+        self.assertEqual(session.diagnostic.type, "INVALID_CHARACTER")
+        self.assertEqual(session.diagnostic.line, 1)
+        self.assertEqual(session.diagnostic.column, 7)
+        self.assertEqual(session.diagnostic.actual, "@")
+        self.assertIsNone(session.ast)
+        self.assertEqual(len(session.symbol_table), 0)
+        self.assertEqual(len(session.repair_candidates), 0)
+
 if __name__ == '__main__':
     unittest.main()

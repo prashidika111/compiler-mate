@@ -1,10 +1,12 @@
-from typing import List
+from typing import List, Optional
 from .tokens import Token, TokenType
+from .diagnostics import Diagnostic
 
 class Lexer:
-    """Hand-written lexer for the Phase 2 minimal language.
+    """Hand-written lexer for the CompilerMate language.
     Supports: int, bool, true, false, identifiers, integer literals, '=', ';', and EOF.
     Tracks 1-based line and column positions accurately across multiline sources.
+    Halts and produces a structured lexical diagnostic upon encountering unrecognized characters.
     """
     KEYWORDS = {
         "int": TokenType.INT,
@@ -19,6 +21,7 @@ class Lexer:
         self.line = 1
         self.column = 1
         self.tokens: List[Token] = []
+        self.diagnostic: Optional[Diagnostic] = None
 
     def lex(self) -> List[Token]:
         while not self._is_at_end():
@@ -43,8 +46,17 @@ class Lexer:
                 self._advance()
                 self._add_token(TokenType.SEMICOLON, ';', start_line, start_col)
             else:
-                # Unknown character – skip it (the parser will later error on unexpected tokens)
-                self._advance()
+                bad_char = self._advance()
+                self.diagnostic = Diagnostic(
+                    phase="lexical",
+                    type="INVALID_CHARACTER",
+                    line=start_line,
+                    column=start_col,
+                    expected="valid token",
+                    actual=bad_char,
+                    message=f"Unrecognized character '{bad_char}'"
+                )
+                return self.tokens
 
         # EOF token at final position
         self._add_token(TokenType.EOF, '', self.line, self.column)

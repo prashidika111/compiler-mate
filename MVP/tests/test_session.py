@@ -46,5 +46,36 @@ class TestSession(unittest.TestCase):
         self.assertFalse(session.apply_repair(-1))
         self.assertFalse(session.apply_repair(99))
 
+    def test_state_cleared_on_lexical_error(self):
+        # First compilation succeeds
+        session = Session(source="int x = 1;")
+        session.compile()
+        self.assertEqual(len(session.symbol_table), 1)
+
+        # Second compilation fails at lexical stage
+        session.source = "int x @ 1;"
+        success = session.compile()
+        self.assertFalse(success)
+        self.assertIsNotNone(session.diagnostic)
+        self.assertEqual(session.diagnostic.phase, "lexical")
+        self.assertEqual(len(session.symbol_table), 0)
+        self.assertIsNone(session.ast)
+        self.assertEqual(len(session.repair_candidates), 0)
+
+    def test_recompilation_after_repair_refreshes_all_state(self):
+        session = Session(source="int x = 10")
+        session.compile()
+        self.assertFalse(session.diagnostic is None)
+        self.assertEqual(len(session.repair_candidates), 1)
+
+        # Apply repair
+        success = session.apply_repair(0)
+        self.assertTrue(success)
+        self.assertIsNone(session.diagnostic)
+        self.assertEqual(len(session.repair_candidates), 0)
+        self.assertIsNotNone(session.ast)
+        self.assertEqual(len(session.symbol_table), 1)
+        self.assertEqual(session.symbol_table.lookup("x").type, "int")
+
 if __name__ == '__main__':
     unittest.main()

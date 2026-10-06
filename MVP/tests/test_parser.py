@@ -93,6 +93,59 @@ class TestParser(unittest.TestCase):
         ast = parser.parse()
         self.assertIsNone(ast)
         self.assertIsNotNone(parser.diagnostic)
+        self.assertEqual(parser.diagnostic.type, "MISSING_TOKEN")
+
+    def test_unexpected_token_statement_start(self):
+        source = "= 10;"
+        lexer = Lexer(source)
+        tokens = lexer.lex()
+        parser = Parser(tokens)
+        ast = parser.parse()
+        self.assertIsNone(ast)
+        diag = parser.diagnostic
+        self.assertIsNotNone(diag)
+        self.assertEqual(diag.phase, "syntax")
+        self.assertEqual(diag.type, "UNEXPECTED_TOKEN")
+        self.assertEqual(diag.actual, "=")
+
+    def test_unexpected_token_after_type(self):
+        source = "int = 10;"
+        lexer = Lexer(source)
+        tokens = lexer.lex()
+        parser = Parser(tokens)
+        ast = parser.parse()
+        self.assertIsNone(ast)
+        diag = parser.diagnostic
+        self.assertIsNotNone(diag)
+        self.assertEqual(diag.phase, "syntax")
+        self.assertEqual(diag.type, "UNEXPECTED_TOKEN")
+        self.assertEqual(diag.actual, "=")
+
+    def test_unexpected_token_in_declaration_literal(self):
+        source = "int x = int;"
+        lexer = Lexer(source)
+        tokens = lexer.lex()
+        parser = Parser(tokens)
+        ast = parser.parse()
+        self.assertIsNone(ast)
+        diag = parser.diagnostic
+        self.assertIsNotNone(diag)
+        self.assertEqual(diag.phase, "syntax")
+        self.assertEqual(diag.type, "UNEXPECTED_TOKEN")
+        self.assertEqual(diag.actual, "int")
+
+    def test_unexpected_token_in_assignment_rvalue(self):
+        source = "x = =;"
+        lexer = Lexer(source)
+        tokens = lexer.lex()
+        parser = Parser(tokens)
+        ast = parser.parse()
+        self.assertIsNone(ast)
+        diag = parser.diagnostic
+        self.assertIsNotNone(diag)
+        self.assertEqual(diag.phase, "syntax")
+        self.assertEqual(diag.type, "UNEXPECTED_TOKEN")
+        self.assertEqual(diag.actual, "=")
 
 if __name__ == '__main__':
     unittest.main()

@@ -4,7 +4,7 @@ from .diagnostics import Diagnostic
 from .ast import ProgramAST, DeclarationAST, AssignmentAST
 
 class Parser:
-    """Recursive-descent parser for the Phase 2 grammar:
+    """Recursive-descent parser for the CompilerMate grammar:
     program      → statement+ EOF
     statement    → declaration | assignment
     declaration  → ("int" | "bool") IDENTIFIER "=" literal ";"
@@ -63,14 +63,15 @@ class Parser:
             return self._parse_assignment()
         else:
             tok = self._peek()
+            is_eof = tok.type == TokenType.EOF
             self.diagnostic = Diagnostic(
                 phase="syntax",
-                type="MISSING_TOKEN",
+                type="MISSING_TOKEN" if is_eof else "UNEXPECTED_TOKEN",
                 line=tok.line,
                 column=tok.column,
-                expected="statement",
-                actual=tok.lexeme if tok.type != TokenType.EOF else "EOF",
-                message=f"Expected declaration or assignment, got '{tok.lexeme if tok.type != TokenType.EOF else 'EOF'}'"
+                expected="declaration or assignment",
+                actual=tok.lexeme if not is_eof else "EOF",
+                message=f"Expected declaration or assignment, got '{tok.lexeme if not is_eof else 'EOF'}'"
             )
             return None
 
@@ -99,13 +100,14 @@ class Parser:
             val_type = "bool"
         else:
             tok = self._peek()
+            is_eof = tok.type == TokenType.EOF
             self.diagnostic = Diagnostic(
                 phase="syntax",
-                type="MISSING_TOKEN",
+                type="MISSING_TOKEN" if is_eof else "UNEXPECTED_TOKEN",
                 line=tok.line,
                 column=tok.column,
                 expected="literal",
-                actual=tok.lexeme if tok.type != TokenType.EOF else "EOF",
+                actual=tok.lexeme if not is_eof else "EOF",
                 message="Expected literal ('int' literal, 'true', or 'false')"
             )
             return None
@@ -170,13 +172,14 @@ class Parser:
             rv_col = var_tok.column
         else:
             tok = self._peek()
+            is_eof = tok.type == TokenType.EOF
             self.diagnostic = Diagnostic(
                 phase="syntax",
-                type="MISSING_TOKEN",
+                type="MISSING_TOKEN" if is_eof else "UNEXPECTED_TOKEN",
                 line=tok.line,
                 column=tok.column,
                 expected="rvalue",
-                actual=tok.lexeme if tok.type != TokenType.EOF else "EOF",
+                actual=tok.lexeme if not is_eof else "EOF",
                 message="Expected literal or identifier"
             )
             return None
@@ -230,13 +233,14 @@ class Parser:
         if self._check(token_type):
             return self._advance()
         tok = self._peek()
+        is_eof = tok.type == TokenType.EOF
         self.diagnostic = Diagnostic(
             phase="syntax",
-            type="MISSING_TOKEN",
+            type="MISSING_TOKEN" if is_eof else "UNEXPECTED_TOKEN",
             line=tok.line,
             column=tok.column,
             expected=token_type.name,
-            actual=tok.lexeme if tok.type != TokenType.EOF else "EOF",
+            actual=tok.lexeme if not is_eof else "EOF",
             message=f"Expected {description}"
         )
         return None

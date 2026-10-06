@@ -39,6 +39,9 @@ class Session:
         # Step 1: Lexical analysis
         lexer = Lexer(self.source)
         self.tokens = lexer.lex()
+        if lexer.diagnostic is not None:
+            self.diagnostic = lexer.diagnostic
+            return False
 
         # Step 2: Parsing
         parser = Parser(self.tokens)

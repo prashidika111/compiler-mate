@@ -24,7 +24,7 @@ def read_source() -> str:
 
 def main():
     header = """==================================================
-                 CompilerMate (Phase 2)
+                   CompilerMate
        Two-Way Developer–Compiler Interaction
 =================================================="""
     print(header)

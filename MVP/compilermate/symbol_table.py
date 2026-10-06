@@ -8,7 +8,7 @@ class Symbol:
     declared_line: int
 
 class SymbolTable:
-    """Single global symbol table for Phase 2.
+    """Single global symbol table for CompilerMate.
     Stores name, type, and declared_line for declared variables.
     Rebuilt on every compilation.
     """

@@ -40,5 +40,24 @@ class TestDiagnostic(unittest.TestCase):
         self.assertEqual(d.expected, "unique identifier")
         self.assertEqual(d.actual, "x already declared as int at line 1")
 
+    def test_lexical_diagnostic_fields(self):
+        d = Diagnostic(
+            phase="lexical",
+            type="INVALID_CHARACTER",
+            line=1,
+            column=7,
+            expected="valid token",
+            actual="@",
+            message="Unrecognized character '@'"
+        )
+        self.assertEqual(d.phase, "lexical")
+        self.assertEqual(d.type, "INVALID_CHARACTER")
+        self.assertEqual(d.line, 1)
+        self.assertEqual(d.column, 7)
+        self.assertEqual(d.expected, "valid token")
+        self.assertEqual(d.actual, "@")
+        self.assertIn("Unrecognized character", d.message)
+        self.assertIsNone(d.symbol)
+
 if __name__ == '__main__':
     unittest.main()

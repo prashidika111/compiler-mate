@@ -1,13 +1,61 @@
+import sys
+from typing import Optional
 from .session import Session
+from .ast import ProgramAST, DeclarationAST, AssignmentAST
+
+def format_ast(ast: Optional[ProgramAST]) -> str:
+    """Renders a human-readable tree representation of the ProgramAST."""
+    if ast is None:
+        return 'COMPILER: No AST available.'
+    if not ast.statements:
+        return 'COMPILER: ABSTRACT SYNTAX TREE\n\nProgram\n  (empty)'
+
+    # Check if stdout encoding supports box-drawing characters
+    use_unicode = True
+    try:
+        '├──'.encode(sys.stdout.encoding or 'ascii')
+    except (UnicodeEncodeError, LookupError, AttributeError):
+        use_unicode = False
+
+    t_branch = '├── ' if use_unicode else '+-- '
+    l_branch = '└── ' if use_unicode else '\\-- '
+    v_bar = '│   ' if use_unicode else '|   '
+    sep_bar = '│' if use_unicode else '|'
+
+    lines = ['COMPILER: ABSTRACT SYNTAX TREE', '', 'Program']
+    n = len(ast.statements)
+    for i, stmt in enumerate(ast.statements):
+        is_last_stmt = (i == n - 1)
+        branch_stmt = l_branch if is_last_stmt else t_branch
+        prefix_child = '    ' if is_last_stmt else v_bar
+
+        if isinstance(stmt, DeclarationAST):
+            val_str = str(stmt.value).lower() if isinstance(stmt.value, bool) else str(stmt.value)
+            lines.append(f'{branch_stmt}Declaration')
+            lines.append(f'{prefix_child}{t_branch}Type: {stmt.var_type}')
+            lines.append(f'{prefix_child}{t_branch}Name: {stmt.name}')
+            lines.append(f'{prefix_child}{l_branch}Value: {val_str}')
+        elif isinstance(stmt, AssignmentAST):
+            val_str = str(stmt.value).lower() if isinstance(stmt.value, bool) else str(stmt.value)
+            lines.append(f'{branch_stmt}Assignment')
+            lines.append(f'{prefix_child}{t_branch}Target: {stmt.name}')
+            lines.append(f'{prefix_child}{l_branch}Value: {val_str}')
+
+        if not is_last_stmt:
+            lines.append(sep_bar)
+
+    return '\n'.join(lines)
 
 def repl(session: Session):
-    """Read-Eval-Print Loop for developer-compiler interaction in Phase 2.
+    """Read-Eval-Print Loop for developer-compiler interaction in CompilerMate.
     Supports:
     - help
     - explain
     - suggest fixes / suggest
     - apply N
     - show symbols / symbols
+    - show tokens / tokens
+    - show ast / ast
     - state / inspect
     - quit / exit
     """
@@ -25,7 +73,7 @@ def repl(session: Session):
             break
 
         if lc == 'help':
-            print('COMPILER: Available commands: explain, suggest fixes, apply <number>, show symbols, state, help, quit')
+            print('COMPILER: Available commands: explain, suggest fixes, apply <number>, show symbols, show tokens, show ast, state, help, quit')
             continue
 
         if lc == 'explain':
@@ -42,8 +90,10 @@ def repl(session: Session):
                         print(f"COMPILER: Semantic Error: Type mismatch in assignment to '{d.symbol}'. Expected {d.expected}, got {d.actual} at line {d.line}, column {d.column}.")
                     else:
                         print(f"COMPILER: Semantic Error: {d.message} at line {d.line}, column {d.column}.")
+                elif d.phase == "lexical":
+                    print(f"COMPILER: Lexical Error: {d.message} (expected '{d.expected}', got '{d.actual}') at line {d.line}, column {d.column}.")
                 else:
-                    print(f"COMPILER: {d.message} (expected '{d.expected}', got '{d.actual}') at line {d.line}, column {d.column}.")
+                    print(f"COMPILER: Syntax Error: {d.message} (expected '{d.expected}', got '{d.actual}') at line {d.line}, column {d.column}.")
             else:
                 print('COMPILER: No diagnostic to explain.')
             continue
@@ -54,6 +104,8 @@ def repl(session: Session):
                     print(f"COMPILER: [{i}] {r.description} at line {r.line}, column {r.column}.")
             elif session.diagnostic and session.diagnostic.phase == "semantic":
                 print('COMPILER: No deterministic repair available for semantic diagnostic.')
+            elif session.diagnostic and session.diagnostic.phase == "lexical":
+                print('COMPILER: No deterministic repair available for lexical diagnostic.')
             else:
                 print('COMPILER: No suggested fixes.')
             continue
@@ -87,14 +139,38 @@ def repl(session: Session):
                 print('COMPILER: Symbol table is empty.')
             continue
 
+        if lc in ('show tokens', 'tokens'):
+            if session.tokens:
+                print('COMPILER: TOKEN STREAM')
+                print('  LINE  COLUMN  TYPE          LEXEME')
+                print('  ' + '-' * 36)
+                for tok in session.tokens:
+                    print(f'  {tok.line:<5} {tok.column:<7} {tok.type.name:<13} {tok.lexeme}')
+            else:
+                print('COMPILER: Token stream is empty.')
+            continue
+
+        if lc in ('show ast', 'ast'):
+            print(format_ast(session.ast))
+            continue
+
         if lc in ('state', 'inspect'):
             print('COMPILER: CURRENT COMPILER STATE')
             if session.diagnostic:
                 d = session.diagnostic
-                sym_str = f"\n  Symbol: {d.symbol}" if d.symbol else ""
-                print(f'  Phase: {d.phase}\n  Type: {d.type}\n  Line: {d.line}\n  Column: {d.column}\n  Expected: {d.expected}\n  Actual: {d.actual}\n  Message: {d.message}{sym_str}')
+                print('  Status: FAILED')
+                print(f'  Pipeline Stage: {d.phase.upper()}')
+                print(f'  Diagnostic Type: {d.type}')
+                print(f'  Line: {d.line}')
+                print(f'  Column: {d.column}')
+                if d.symbol:
+                    print(f'  Symbol: {d.symbol}')
+                print(f'  Expected: {d.expected}')
+                print(f'  Actual: {d.actual}')
+                print(f'  Message: {d.message}')
             else:
-                print('  Status: Compilation succeeded (no diagnostic).')
+                print('  Status: SUCCESS (no diagnostic)')
+                print('  Pipeline Stage: COMPLETE')
 
             symbols = session.symbol_table.all_symbols()
             if symbols:
@@ -103,6 +179,13 @@ def repl(session: Session):
                     print(f'    - {s.name}: {s.type} (line {s.declared_line})')
             else:
                 print('  Symbol Table: (empty)')
+
+            if session.repair_candidates:
+                print('  Repair Candidates:')
+                for i, r in enumerate(session.repair_candidates, start=1):
+                    print(f'    [{i}] {r.description} at line {r.line}, column {r.column}')
+            else:
+                print('  Repair Candidates: None')
             continue
 
         print('COMPILER: Unknown command. Type "help" for a list.')

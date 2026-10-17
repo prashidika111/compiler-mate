@@ -1,4 +1,7 @@
 ````markdown
+
+STATUS: Halted for now. This project is solely just a hypothetical what-if idea brought to reality and for now, I have no intention to advance it further.
+
 # CompilerMate
 
 A compiler's diagnostic is usually the last thing it says to you. It parses your code, finds a problem, prints a message, and leaves you to decide what to do next. Whatever richer picture it had, such as which token it expected, where exactly things went wrong, and what the grammar required at that point, is no longer directly available through the interaction. You are left to reconstruct it yourself: read the error, figure out what it means, fix the file, recompile, and hope you got it right. CompilerMate started with a question I kept coming back to: what if the diagnostic didn't have to be the end of the interaction? What if the compiler's understanding of the failure stayed around long enough for you to actually ask it something?

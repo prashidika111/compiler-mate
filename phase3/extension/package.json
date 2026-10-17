@@ -1,0 +1,97 @@
+{
+  "name": "compilermate",
+  "displayName": "CompilerMate",
+  "description": "Python issue investigation and restricted-language compiler lab",
+  "version": "3.0.0",
+  "publisher": "compilermate",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:python",
+    "onCommand:compilermate.investigateDiagnostic",
+    "onCommand:compilermate.reinvestigate",
+    "onCommand:compilermate.showHistory",
+    "onView:compilermate.investigationView",
+    "onView:compilermate.issuesView",
+    "onCommand:compilermate.refreshIssues"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "compilermate.investigateDiagnostic",
+        "title": "Investigate Diagnostic with CompilerMate",
+        "category": "CompilerMate"
+      },
+      {
+        "command": "compilermate.reinvestigate",
+        "title": "Re-investigate Current Diagnostic",
+        "category": "CompilerMate"
+      },
+      {
+        "command": "compilermate.showHistory",
+        "title": "Show Investigation History",
+        "category": "CompilerMate"
+      },
+      {
+        "command": "compilermate.refreshIssues",
+        "title": "Refresh Python Issues",
+        "category": "CompilerMate"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "compilermate-sidebar",
+          "title": "CompilerMate",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "compilermate-sidebar": [
+        {
+          "id": "compilermate.issuesView",
+          "name": "Python Issues"
+        },
+        {
+          "type": "webview",
+          "id": "compilermate.investigationView",
+          "name": "Issue Detail"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CompilerMate",
+      "properties": {
+        "compilermate.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to Python interpreter (leave empty to auto-detect system/active Python)."
+        },
+        "compilermate.timeoutMs": {
+          "type": "number",
+          "default": 8000,
+          "description": "Timeout in milliseconds for investigation engine response."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "bundle-engine": "node ./scripts/bundle-engine.js",
+    "vscode:prepublish": "npm run compile",
+    "compile": "npm run bundle-engine && tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}

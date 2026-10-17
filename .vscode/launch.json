@@ -1,0 +1,18 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch CompilerMate Extension (Extension Host)",
+            "type": "extensionHost",
+            "request": "launch",
+            "runtimeExecutable": "${execPath}",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}/phase3/extension"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/phase3/extension/out/**/*.js"
+            ],
+            "preLaunchTask": "CompilerMate: Compile Extension"
+        }
+    ]
+}

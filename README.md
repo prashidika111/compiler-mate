@@ -1,22 +1,16 @@
 ````markdown
 # CompilerMate
 
-A compiler's diagnostic is usually the last thing it says to you. It parses your code, finds a problem, prints a message, and leaves you to decide what to do next. Whatever richer picture it had, such as which token it expected, where exactly things went wrong, and what the grammar required at that point, is no longer directly available through the interaction. You are left to reconstruct it yourself: read the error, figure out what it means, fix the file, recompile, and hope you got it right.
-
-CompilerMate started with a question I kept coming back to: what if the diagnostic didn't have to be the end of the interaction? What if the compiler's understanding of the failure stayed around long enough for you to actually ask it something?
-
+A compiler's diagnostic is usually the last thing it says to you. It parses your code, finds a problem, prints a message, and leaves you to decide what to do next. Whatever richer picture it had, such as which token it expected, where exactly things went wrong, and what the grammar required at that point, is no longer directly available through the interaction. You are left to reconstruct it yourself: read the error, figure out what it means, fix the file, recompile, and hope you got it right. CompilerMate started with a question I kept coming back to: what if the diagnostic didn't have to be the end of the interaction? What if the compiler's understanding of the failure stayed around long enough for you to actually ask it something?
 That's the experiment. Not a replacement compiler or a new language, but a small, honest test of whether a compiler's diagnostic state can be kept addressable instead of disposable, and what a session built around that looks like when it's real code rather than a slide.
 
 ## The observation
 
-When a compiler hits an error, it already knows a lot more than the one-line message it shows you: the tokens it read, exactly where parsing broke down, what it expected next, what it found instead, and the grammar rule that was violated. Modern tooling, including LSPs, quick fixes, and inline diagnostics, already surfaces a good amount of this. I'm not claiming otherwise, and I'm not trying to rebuild any of it.
-
-What caught my attention was narrower: after that diagnostic is produced, the conversation about it usually stops. You get the message, and any further exploration, such as "why exactly?", "what are my options?", or "just fix it", has to be reconstructed by you from scratch. The compiler has not necessarily exposed the context in a form that lets you keep asking questions about the same failure.
+When a compiler hits an error, it already knows a lot more than the one-line message it shows you: the tokens it read, exactly where parsing broke down, what it expected next, what it found instead, and the grammar rule that was violated. Modern tooling, including LSPs, quick fixes, and inline diagnostics, already surfaces a good amount of this. I'm not claiming otherwise, and I'm not trying to rebuild any of it. What caught my attention was narrower: after that diagnostic is produced, the conversation about it usually stops. You get the message, and any further exploration, such as "why exactly?", "what are my options?", or "just fix it", has to be reconstructed by you from scratch. The compiler has not necessarily exposed the context in a form that lets you keep asking questions about the same failure.
 
 ## The question
 
 What if the compiler's current diagnostic didn't just get printed and discarded? What if it stayed live as session state, so you could keep interacting with it?
-
 ```text
 Developer → Compiler → Diagnostic → Developer        (conventional)
 
@@ -29,153 +23,177 @@ Compiler state                                        (what CompilerMate tries)
 ````
 
 The compiler pipeline itself isn't made bidirectional. Lexing and parsing still run forward, the way they normally do. What changes is what happens to the result of that pipeline. Instead of collapsing into a printed string, a failure becomes a structured object that a small interaction layer can be asked about.
-
 The way I think about it is simple: the compiler is the experimental environment, and the interaction model is the actual subject of the experiment.
-
-## What the MVP actually does
-
-The current implementation is deliberately tiny. It's a hand-written lexer and parser for a single kind of statement, an `int` declaration, built specifically so I could get one real diagnostic all the way through a full interaction cycle rather than half-implementing a dozen.
-
-The one case it handles:
-
-```text
-int x = 10
-```
-
-The parser notices the missing `;`. That failure becomes a structured `Diagnostic` object containing the phase, type, line, column, what was expected, and what was actually found. A `Session` holds onto it. From there you can drive the interaction:
-
-```text
-COMPILER: Error at line 1, column 11: expected ";"
-YOU: > explain
-COMPILER: Expected ';' after expression (expected ';', got 'EOF') at line 1, column 11.
-YOU: > suggest fixes
-COMPILER: [1] Insert missing semicolon at line 1, column 11.
-YOU: > apply 1
-COMPILER: Fix applied. Recompiling...
-COMPILER: Compilation successful.
-```
-
-`explain` and `suggest fixes` both read from the same retained diagnostic. They are two different views on one piece of state, not two independent lookups. `apply 1` is where it gets more interesting: applying the repair isn't treated as proof that anything worked. The source is edited, and then the corrected text is run back through the actual lexer and parser. "Compilation successful" only appears once that real recompilation genuinely passes. It isn't a hardcoded response to `apply 1`.
-
-This is the current, complete scope. There's no semantic analysis, no type checking, no symbol table, no IR, no execution, and no general-purpose repair. There is one diagnostic kind, one deterministic fix, and a real end-to-end loop around it.
-
-## Architecture
-
-```text
-Source
-   ↓
-Lexer
-   ↓
-Parser
-   ↓
-Diagnostic
-   ↓
-Session State
-   ↓
-Interaction (explain / suggest fixes / apply)
-   ↓
-Repair
-   ↓
-Source Modification
-   ↓
-Recompilation
-   ↓
-Success
-```
-
 The distinction that matters here isn't lexing versus parsing. It's the gap between generating a diagnostic and retaining it. A conventional pipeline does the former and exposes the result through a diagnostic message. CompilerMate does the former and then keeps the diagnostic object around, so `explain`, `suggest fixes`, and `apply` all resolve against the same retained state instead of each re-deriving an answer from scratch. Only when a repair is applied does the pipeline get invoked again, from the top, on the corrected source. Nothing is patched in place or assumed to work.
 
-### Modules
+## Modules and Architecture
 
-* **`lexer.py`**: hand-written lexer producing `int`, identifier, `=`, integer literal, and `;` tokens.
-* **`parser.py`**: a small recursive-descent parser for one declaration form. On success it returns a `DeclarationAST`; on failure it builds a `Diagnostic` instead of just raising.
-* **`diagnostics.py`**: the `Diagnostic` dataclass containing phase, type, line, column, expected/actual, and message.
-* **`repair.py`**: the `Repair` dataclass describing a single deterministic edit, including what to insert and where.
-* **`session.py`**: `Session` holds the source, tokens, AST, active diagnostic, and repair candidates. `compile()` runs the pipeline and derives repair candidates from the resulting diagnostic. `apply_repair()` performs the edit and recompiles.
-* **`interaction.py`**: the REPL maps the core commands `explain`, `suggest fixes`, and `apply <n>` onto the session, with basic utility commands such as `state`, `help`, and `quit`.
-* **`main.py`**: entry point. It reads one line of source, runs the first compile, and drops into the REPL if there's a diagnostic to talk about.
+CompilerMate has evolved from an interactive compiler experiment into a code investigation and verification tool integrated with Visual Studio Code in the form of an "extension" I can use locally. While its essence can not be guaranteed in a fast-paced world influenced with AI, I personally think this experiment would be of huge help to someone still trying to learn and understand codes. 
 
-## Why it's built this way
+### Python Investigation Engine
 
-**Python.** Nothing about the experiment needed a systems language, and Python keeps the internal structures, including tokens, the AST node, and the diagnostic object, easy to inspect while building. That mattered because the whole point was to make internal compiler state visible and interactable.
+The engine is responsible for examining code, producing structured findings, supporting investigations, and handling verification-related operations.
+- **`analyzers/`**: Contains focused analysis modules for delimiter mismatches, indentation problems, missing colons, string-related issues, undefined names, and unused imports.
+- **`models.py`**: Defines the structured models used to represent investigation information and related data.
+- **`investigator.py`**: Coordinates investigation-related operations.
+- **`conversation.py`**: Implements the engine's structured investigation and interaction workflow.
+- **`verifier.py`**: Handles verification-related logic and records verification outcomes.
+- **`cli.py`**: Provides a command-line entry point for interacting with the engine.
+- **`__main__.py`**: Allows the engine package to be invoked as a Python module.
+The engine also has a dedicated test suite covering the analysis modules, investigation workflow, verification behavior, scenarios, and communication protocol.
 
-**Hand-written lexer and parser, not a generated one.** A parser generator would have hidden exactly the moment I cared about: where a failure becomes structured data. Writing the parser by hand means I control precisely what gets captured when a rule doesn't match, which is what makes a structured diagnostic possible in the first place.
+### VS Code Extension
 
-**A dataclass for `Diagnostic`, not an exception or a string.** Exceptions are useful for control flow. Strings are difficult to query later. A diagnostic that's meant to be queried needs to be a real object with fields something else can read back from. That's the premise the interaction layer depends on.
+The extension brings CompilerMate's investigation workflow into the developer's existing coding environment. It is implemented in TypeScript and communicates with the Python engine.
+- **`extension.ts`**: Entry point for the VS Code extension and its editor integration.
+- **`engineBridge.ts`**: Coordinates communication between the extension and the Python engine.
+- **`investigationStore.ts`**: Manages persisted investigation records and supports reopening previous investigations.
+- **`issuesTree.ts`**: Integrates issue information into the VS Code interface.
+- **`resultsPanel.ts`**: Presents investigation results to the developer.
+- **`quickFixProvider.ts`**: Integrates proposed fixes with VS Code's quick-fix workflow.
+- **`verificationEngine.ts`**: Connects verification-related behavior to the extension workflow.
+- **`types.ts`**: Defines shared TypeScript types used across extension components.
+- **`src/test/`**: Contains extension-side tests, including tests for the engine bridge.
+The extension also contains a bundled copy of the Python engine under `extension/engine/`, along with a bundling script and packaging configuration.
 
-**CLI, not an editor plugin or GUI.** The thing under test is the interaction model, not a UI. A prompt loop is the smallest possible surface that still lets the loop of explain, suggest, apply, and recompile happen for real.
+### Investigation History and Verification
 
-**Recompilation is mandatory, not implied.** `apply_repair` doesn't just splice the string and declare victory. It calls `compile()` again and reports success only if the second pass actually completes. String editing without re-verifying isn't a repair. It's a guess that looks like one.
+Two important parts of the current design are investigation persistence and verification.
+An investigation should not disappear into an unstructured conversation. CompilerMate retains investigation records and supports reopening previous investigations, with source snapshots and hash information providing context about the code state associated with a record.
+Similarly, proposing a fix and verifying it are treated as separate operations. A proposed change is not automatically considered correct simply because it appears plausible. Verification results must be interpreted according to the checks actually performed.
 
-## Running it
+## Why It's Built This Way
 
-From the `MVP/` directory:
+**Python for the investigation engine.** Python makes the analysis logic and its internal structures straightforward to develop and inspect. It also provides a practical environment for building focused source-code analyzers and testing their behavior.
+**TypeScript for the editor integration.** The VS Code extension provides the interface through which developers interact with CompilerMate. Keeping the editor-facing logic separate from the Python engine gives the project a clearer boundary between the user workflow and the investigation logic.
+**Structured findings instead of opaque conclusions.** CompilerMate is intended to distinguish observed evidence from inference and unresolved questions. This matters because a plausible explanation is not necessarily a proven root cause. Structured findings make the investigation easier to inspect and reason about.
+**Investigation and verification as separate stages.** Generating a proposed fix and establishing whether it works are different tasks. Keeping verification distinct makes it possible to report what was checked without treating a generated suggestion as proof of correctness.
+**Persistent records instead of disposable interactions.** Investigation history makes it possible to return to previous work and examine the information associated with it. This supports traceability beyond a single debugging session.
 
+**A local VS Code extension rather than a globally published product.** The current extension has been developed and exercised locally through VS Code's Extension Development Host. This provides a practical environment for testing the full workflow without requiring a public release. The extension has not been published as a globally available VS Code Marketplace product.
+
+## Running CompilerMate Locally
+
+CompilerMate is currently intended for local development and testing. It is not yet a globally published extension that users can install directly from the VS Code Marketplace.
+### Prerequisites
+- Visual Studio Code
+- Git
+- Node.js and npm
+- Python, using a version compatible with the project
+### 1. Clone the repository
 ```bash
-python -m compilermate.main
+git clone https://github.com/prashidika111/compiler-mate.git
+cd compiler-mate
 ```
-
-It prompts once for a line of source. Try the case it's built for:
-
-```text
-SOURCE > int x = 10
-```
-
-Then drive the session with `explain`, `suggest fixes`, and `apply 1`.
-
-`demo_input.txt` contains a scripted version of this same sequence if you'd rather pipe it in:
-
+### 2. Open the extension project
 ```bash
-python -m compilermate.main < demo_input.txt
+code phase3/extension
 ```
-
-### Tests
-
+### 3. Install the extension dependencies
+From the extension directory:
 ```bash
-python -m unittest discover -s tests -v
+npm install
 ```
+### 4. Compile the extension
+```bash
+npm run compile
+```
+### 5. Launch the local development version
+1. Open the extension project in VS Code.
+2. Open **Run and Debug**.
+3. Select the provided extension launch configuration.
+4. Press **F5** to launch the Extension Development Host.
+5. Open a suitable Python file in the new VS Code window and exercise the available CompilerMate workflow.
+The Extension Development Host runs a separate VS Code window with the extension loaded for development. It is a local testing environment, not a global installation or public release.
+The repository includes VS Code launch and task configurations to support this workflow.
+> **Note:** These instructions describe the local development workflow. They do not imply that CompilerMate has been packaged, published, or tested across all operating systems and environments.
 
-The tests cover the lexer's token stream, the parser's success and missing-semicolon paths, the `Diagnostic` and `Repair` dataclasses, and a full integration test that runs the missing-semicolon scenario end to end, including the recompiled source and the resulting AST values.
+## Tests
 
-## Project structure
+CompilerMate includes tests for the Python investigation engine and the TypeScript extension.
+### Python engine
+From the repository root:
+```bash
+python -m unittest discover -s phase3/engine/tests
+```
+### VS Code extension
+From `phase3/extension`, inspect the available scripts:
+```bash
+npm run
+```
+Run the test script defined in `package.json`. Extension tests may require the VS Code test environment and the relevant development dependencies.
+### Manual workflow testing
+The extension should also be exercised through the Extension Development Host for better result and assurance. 
+1. Open a Python file containing an issue supported by the current analyzers.
+2. Start a CompilerMate investigation.
+3. Examine the findings and available supporting information.
+4. Review a proposed fix before deciding whether to apply it.
+5. Inspect the verification outcome.
+6. Reopen a previous investigation and inspect its retained information.
+These steps exercise the extension as a developer would use it, complementing the automated tests.
+
+## Project Structure
 
 ```text
 CompilerMate/
+├── .vscode/
+│   ├── launch.json
+│   └── tasks.json
+│
 ├── MVP/
-│   ├── compilermate/
-│   │   ├── lexer.py
-│   │   ├── tokens.py
-│   │   ├── parser.py
-│   │   ├── ast.py
-│   │   ├── diagnostics.py
-│   │   ├── repair.py
-│   │   ├── session.py
-│   │   ├── interaction.py
-│   │   └── main.py
-│   ├── tests/
-│   └── demo_input.txt
-├── Reports for submission/
-└── .gitignore
+│   └── compilermate/
+│       └── ... earlier implementation
+│
+└── phase3/
+    ├── demo_scenarios.py
+    ├── TESTING.py
+    ├── engine/
+    │   ├── compilermate_engine/
+    │   │   ├── analyzers/
+    │   │   ├── cli.py
+    │   │   ├── conversation.py
+    │   │   ├── investigator.py
+    │   │   ├── models.py
+    │   │   └── verifier.py
+    │   └── tests/
+    │
+    └── extension/
+        ├── engine/
+        │   └── compilermate_engine/
+        ├── media/
+        ├── scripts/
+        ├── src/
+        │   ├── engineBridge.ts
+        │   ├── extension.ts
+        │   ├── investigationStore.ts
+        │   ├── issuesTree.ts
+        │   ├── quickFixProvider.ts
+        │   ├── resultsPanel.ts
+        │   ├── types.ts
+        │   ├── verificationEngine.ts
+        │   └── test/
+        ├── package.json
+        └── tsconfig.json
 ```
-
-The `MVP/` name is literal, not incidental. This is a first milestone, and I expect the layout to grow past it rather than get restructured around it. `Reports for submission/` holds documentation written for one stage of this project's development. It was first built out as coursework, but that is a record of the project's context, not what defines the project.
+The latest implementation lives under `phase3/`, which is the final phase for now, where the investigation engine and VS Code extension are maintained as distinct components. The bundled engine under `phase3/extension/engine/` allows the extension to carry its Python engine alongside the editor integration. The standalone engine under `phase3/engine/` remains the development and testing location.
 
 ## Limitations
 
-* One language construct (`int x = value;`), one diagnostic kind (missing `;`), and one repair.
-* No semantic analysis. Nothing here knows what a variable means, only whether the syntax is well-formed.
-* No symbol table, no IR, and no execution. The AST exists only because the parser needs somewhere to put a successful result.
-* The interaction vocabulary is small and deliberately bounded. There is no free-form querying, and there isn't meant to be. Every response comes from structured fields on the diagnostic rather than generated text.
-* Recompilation only re-runs lexing and parsing, not any later phase, since none of those phases exist yet.
+CompilerMate is an evolving investigation and verification tool, not a universal automated debugging system as this was built just as a form of an experiment.
+- The current analyzers cover selected categories of Python issues rather than every possible syntax, semantic, or runtime defect.
+- A static finding does not necessarily establish the root cause of a failure.
+- A diagnosis can be incomplete or incorrect even when it is supported by some evidence.
+- Verification outcomes depend on the checks that were actually performed and the conditions under which they ran.
+- Passing available checks does not prove that a program is correct for every input or environment.
+- Investigation quality depends on the source code and diagnostic information available.
+- The extension has been exercised locally but has not been released as a globally available VS Code Marketplace product.
+- A local development workflow does not, by itself, establish compatibility across all machines and configurations.
+These limitations are central to the design. CompilerMate should make the evidence and verification behind an investigation inspectable rather than imply certainty that the implementation cannot establish.
 
-None of this is a bug list. It's the deliberate size of a first vertical slice, kept small on purpose so the interaction loop could actually be finished and run rather than partially sketched across a bigger pipeline.
+## Where This Could Go
 
-## Where this could go
-
-The uninteresting version of "what's next" is just adding more compiler features: more statement types, more diagnostic kinds, a symbol table, semantic checks. That's real work, but it's not the part I find interesting.
-
-The actual open question is what happens to the interaction once the compiler state behind it gets richer. Right now there's exactly one thing to `explain` and exactly one thing to `apply`. What does `explain` look like once there are multiple plausible causes for a type error? What does `suggest fixes` mean once repairs aren't all a single deterministic insertion? Does retained session state stay useful once a program has scope, and the diagnostic needs to reference a symbol table instead of just a token?
-
+The next step is not simply to add more analyzers or generate more fixes. Those are useful directions, but the more interesting question is how investigation and verification should behave as the available code context becomes richer. How should a diagnosis present several plausible causes without disguising uncertainty? How should the system compare multiple possible fixes? What evidence is sufficient to say a change improved the situation? How can investigation history remain useful as source code changes between sessions? These questions concern the interaction between investigation, evidence, verification, and developer judgment—not merely the number of issues the tool can recognize.
+For now, the project has a working local VS Code workflow and a dedicated engine and extension structure. The next stage is to document the implementation accurately, consolidate the project presentation, and determine what would be required for a reliable public release.
 Concretely, that could mean more of the existing grammar, such as conditionals, loops, and more types, along with semantic analysis and a real symbol table, more diagnostic kinds with their own bounded repairs, and commands like `why` or `show symbols` that only make sense once there is semantic state to show. None of that is built yet, and I'd rather list it here honestly than have the code imply otherwise.
 
 ```
